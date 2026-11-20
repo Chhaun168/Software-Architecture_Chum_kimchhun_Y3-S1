@@ -3,7 +3,8 @@ import type { Response } from 'express';
 import { ArrayNotEmpty, IsIn, IsInt, IsString } from 'class-validator';
 import { randomUUID } from 'node:crypto';
 import { IDEMPOTENCY, ORDERS, RESTAURANTS } from './data.js';
- 
+import { EventsPublisher } from './ordering/events.publisher.js';
+
 export class CreateOrderDto {
   @IsInt() restaurantId: number;
   @ArrayNotEmpty() @IsString({ each: true }) items: string[];
@@ -13,9 +14,11 @@ export class UpdateOrderStatusDto {
   @IsIn(['COOKING', 'DELIVERING', 'DELIVERED', 'CANCELLED'])
   status: string;
 }
- 
+
 @Controller('v1/orders')
 export class OrdersController {
+  constructor(private readonly events: EventsPublisher) {}
+
   @Post()
   @HttpCode(201)
   create(@Body() dto: CreateOrderDto,
@@ -31,6 +34,7 @@ export class OrdersController {
     const order = { id: randomUUID(), status: 'PLACED', ...dto };
     ORDERS.set(order.id, order);
     if (key) IDEMPOTENCY.set(key, order.id);
+    this.events.publish('OrderPlaced', { orderId: order.id, restaurantId: dto.restaurantId, items: dto.items });
     return order;
   }
 
